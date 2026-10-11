@@ -44,68 +44,14 @@ label{font-size:14px;font-weight:bold;display:block}
 hr{border:0;border-top:1px solid #e5e7eb;margin:12px 0}
 footer{text-align:center;color:#64748b;font-size:12px;padding:20px}
 .hidden{display:none!important}
-
-/* نافذة التأكيد */
-.modal-bg{
- display:none;
- position:fixed!important;
- inset:0!important;
- width:100%!important;
- height:100%!important;
- z-index:2147483647!important;
- background:rgba(0,0,0,.8)!important;
- align-items:center!important;
- justify-content:center!important;
- padding:20px!important;
-}
-.modal{
- display:block!important;
- width:100%!important;
- max-width:360px!important;
- background:#fff!important;
- color:#111827!important;
- padding:22px!important;
- border-radius:15px!important;
- box-shadow:0 10px 40px #0008!important;
- visibility:visible!important;
- opacity:1!important;
-}
-.modal h3{
- display:block!important;
- color:#111827!important;
- font-size:20px!important;
- margin:0 0 12px!important;
-}
-.modal p{
- display:block!important;
- color:#374151!important;
- font-size:16px!important;
- line-height:1.8!important;
- margin:0!important;
-}
-.modal-buttons{
- display:flex!important;
- gap:10px!important;
- margin-top:20px!important;
-}
-.modal-buttons button{
- display:block!important;
- flex:1!important;
- min-height:48px!important;
- visibility:visible!important;
- opacity:1!important;
- position:relative!important;
- color:#fff!important;
-}
-.modal-buttons .secondary{
- background:#e5e7eb!important;
- color:#111827!important;
-}
-.actions button{
- display:block!important;
- visibility:visible!important;
- opacity:1!important;
-}
+.modal-bg{display:none;position:fixed!important;inset:0!important;width:100%!important;height:100%!important;z-index:2147483647!important;background:rgba(0,0,0,.8)!important;align-items:center!important;justify-content:center!important;padding:20px!important}
+.modal{display:block!important;width:100%!important;max-width:360px!important;background:#fff!important;color:#111827!important;padding:22px!important;border-radius:15px!important;box-shadow:0 10px 40px #0008!important}
+.modal h3{display:block!important;color:#111827!important;font-size:20px!important;margin:0 0 12px!important}
+.modal p{display:block!important;color:#374151!important;font-size:16px!important;line-height:1.8!important;margin:0!important}
+.modal-buttons{display:flex!important;gap:10px!important;margin-top:20px!important}
+.modal-buttons button{display:block!important;flex:1!important;min-height:48px!important;visibility:visible!important;opacity:1!important;position:relative!important;color:#fff!important}
+.modal-buttons .secondary{background:#e5e7eb!important;color:#111827!important}
+.actions button{display:block!important;visibility:visible!important;opacity:1!important}
 @media(max-width:430px){
  main{padding:9px}
  .product img{width:75px;height:75px}
@@ -194,343 +140,602 @@ footer{text-align:center;color:#64748b;font-size:12px;padding:20px}
 <script>
 "use strict";
 
-const STORAGE_KEY="inventory_manager_v2";
-let items=[];
-let confirmAction=null;
-let selectedPhoto="";
+const STORAGE_KEY = "inventory_manager_v2";
+const OLD_STORAGE_KEY = "inventory_manager_v1";
 
-function loadData(){
- try{
-  const raw=localStorage.getItem(STORAGE_KEY);
-  if(raw){
-   const data=JSON.parse(raw);
-   if(Array.isArray(data))items=data;
-  }else{
-   // نقل بيانات النسخة السابقة مع الحفاظ على آخر سعر محفوظ فيها
-   const old=localStorage.getItem("inventory_manager_v1");
-   if(old){
-    const data=JSON.parse(old);
-    if(Array.isArray(data)){
-     items=data.map(x=>({...x,avgCost:Number(x.avgCost)||0}));
-     saveData();
-    }
-   }
-  }
- }catch(e){
-  alert("تعذرت قراءة البيانات المحفوظة. جرّب استعادة نسخة احتياطية.");
- }
- renderInventory();
+let items = [];
+let confirmAction = null;
+let selectedPhoto = "";
+
+function norm(s) {
+  return String(s ?? "")
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function saveData(){
- try{
-  localStorage.setItem(STORAGE_KEY,JSON.stringify(items));
-  return true;
- }catch(e){
-  alert("تعذر الحفظ، غالباً مساحة التخزين ممتلئة. صدّر نسخة احتياطية أو قلل حجم الصور.");
-  return false;
- }
+function makeId() {
+  return "item_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
 }
 
-function showPanel(name){
- document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
- document.getElementById(name).classList.add("active");
- document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
- const ids={inventory:"navInventory",invoice:"navInvoice",backup:"navBackup"};
- document.getElementById(ids[name]).classList.add("active");
- if(name==="inventory")renderInventory();
- window.scrollTo(0,0);
-}
-
-function nf(n){
- return Number(n||0).toLocaleString("en-US",{maximumFractionDigits:2});
-}
-
-function esc(s){
- return String(s??"").replace(/[&<>"']/g,c=>({
- "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
- }[c]));
-}
-
-function norm(s){return String(s||"").trim().toLowerCase();}
-function makeId(){return "item_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);}
-
-function resizeImage(file){
- return new Promise((resolve,reject)=>{
-  if(!file||!file.type.startsWith("image/")){resolve("");return;}
-  const reader=new FileReader();
-  reader.onerror=()=>reject();
-  reader.onload=()=>{
-   const img=new Image();
-   img.onerror=()=>reject();
-   img.onload=()=>{
-    const max=800;
-    const ratio=Math.min(1,max/img.width,max/img.height);
-    const w=Math.round(img.width*ratio);
-    const h=Math.round(img.height*ratio);
-    const canvas=document.createElement("canvas");
-    canvas.width=w;canvas.height=h;
-    canvas.getContext("2d").drawImage(img,0,0,w,h);
-    resolve(canvas.toDataURL("image/jpeg",0.7));
-   };
-   img.src=reader.result;
+function normalizeItem(x) {
+  return {
+    id: String(x.id || makeId()),
+    name: String(x.name || ""),
+    code: String(x.code || ""),
+    qty: Math.max(0, Number(x.qty) || 0),
+    avgCost: Math.max(0, Number(x.avgCost ?? x.lastPrice) || 0),
+    sold: Math.max(0, Number(x.sold) || 0),
+    photo: typeof x.photo === "string" ? x.photo : "",
+    lastInvoice: String(x.lastInvoice || ""),
+    createdAt: x.createdAt || new Date().toISOString(),
+    updatedAt: x.updatedAt || new Date().toISOString()
   };
-  reader.readAsDataURL(file);
- });
 }
 
-document.getElementById("productPhoto").addEventListener("change",async function(){
- selectedPhoto="";
- const preview=document.getElementById("photoPreview");
- preview.innerHTML="";
- preview.classList.add("hidden");
- const file=this.files&&this.files[0];
- if(!file)return;
- try{
-  selectedPhoto=await resizeImage(file);
-  preview.innerHTML='<img alt="معاينة الصورة" src="'+selectedPhoto+'" style="max-width:120px;max-height:120px;object-fit:contain">';
-  preview.classList.remove("hidden");
- }catch(e){
-  alert("تعذرت قراءة الصورة.");
-  this.value="";
- }
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+
+    if (raw !== null) {
+      const data = JSON.parse(raw);
+
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid saved data");
+      }
+
+      items = data.map(normalizeItem);
+      renderInventory();
+      return;
+    }
+
+    const old = localStorage.getItem(OLD_STORAGE_KEY);
+
+    if (old !== null) {
+      const data = JSON.parse(old);
+
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid old data");
+      }
+
+      items = data.map(normalizeItem);
+
+      if (!saveData()) {
+        alert("تمت قراءة البيانات القديمة، لكن تعذر حفظ النسخة الجديدة. صدّر نسخة احتياطية إذا أمكن.");
+      }
+
+      renderInventory();
+      return;
+    }
+
+    items = [];
+    renderInventory();
+  } catch (e) {
+    console.error("Inventory loading failed:", e);
+    items = [];
+    renderInventory();
+    alert("تعذرت قراءة بيانات المخزون. لا تحذف بيانات التطبيق. جرّب استعادة نسخة احتياطية.");
+  }
+}
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    return true;
+  } catch (e) {
+    console.error("Inventory save failed:", e);
+    alert("تعذر الحفظ، غالباً مساحة التخزين ممتلئة. صدّر نسخة احتياطية أو قلل حجم الصور.");
+    return false;
+  }
+}
+
+function showPanel(name) {
+  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+  document.getElementById(name).classList.add("active");
+
+  document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+
+  const ids = {
+    inventory: "navInventory",
+    invoice: "navInvoice",
+    backup: "navBackup"
+  };
+
+  document.getElementById(ids[name]).classList.add("active");
+
+  if (name === "inventory") renderInventory();
+
+  window.scrollTo(0, 0);
+}
+
+function nf(n) {
+  return Number(n || 0).toLocaleString("en-US", {
+    maximumFractionDigits: 2
+  });
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[c]));
+}
+
+function resizeImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith("image/")) {
+      resolve("");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("File read failed"));
+
+    reader.onload = () => {
+      const img = new Image();
+
+      img.onerror = () => reject(new Error("Image load failed"));
+
+      img.onload = () => {
+        const max = 600;
+        const ratio = Math.min(1, max / img.width, max / img.height);
+        const w = Math.max(1, Math.round(img.width * ratio));
+        const h = Math.max(1, Math.round(img.height * ratio));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          reject(new Error("Canvas unavailable"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.6));
+      };
+
+      img.src = reader.result;
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById("productPhoto").addEventListener("change", async function() {
+  selectedPhoto = "";
+
+  const preview = document.getElementById("photoPreview");
+  preview.innerHTML = "";
+  preview.classList.add("hidden");
+
+  const file = this.files && this.files[0];
+  if (!file) return;
+
+  try {
+    selectedPhoto = await resizeImage(file);
+
+    const img = document.createElement("img");
+    img.alt = "معاينة الصورة";
+    img.src = selectedPhoto;
+    img.style.maxWidth = "120px";
+    img.style.maxHeight = "120px";
+    img.style.objectFit = "contain";
+
+    preview.appendChild(img);
+    preview.classList.remove("hidden");
+  } catch (e) {
+    alert("تعذرت قراءة الصورة.");
+    this.value = "";
+    selectedPhoto = "";
+  }
 });
 
-function addPurchase(){
- const invoiceNo=document.getElementById("invoiceNumber").value.trim();
- const name=document.getElementById("productName").value.trim();
- const code=document.getElementById("productCode").value.trim();
- const qty=Number(document.getElementById("buyQty").value);
- const price=Number(document.getElementById("buyPrice").value);
+function addPurchase() {
+  const invoiceNo = document.getElementById("invoiceNumber").value.trim();
+  const name = document.getElementById("productName").value.trim();
+  const code = document.getElementById("productCode").value.trim();
+  const qty = Number(document.getElementById("buyQty").value);
+  const price = Number(document.getElementById("buyPrice").value);
 
- if(!name){alert("اكتب اسم المادة.");return;}
- if(!Number.isInteger(qty)||qty<=0){alert("الكمية لازم تكون عدداً صحيحاً أكبر من صفر.");return;}
- if(!Number.isFinite(price)||price<0){alert("اكتب سعر شراء صحيحاً.");return;}
+  if (!name) {
+    alert("اكتب اسم المادة.");
+    return;
+  }
 
- let existing=null;
- if(code){
-  existing=items.find(x=>norm(x.code)===norm(code));
- }else{
-  existing=items.find(x=>!String(x.code||"").trim()&&norm(x.name)===norm(name));
- }
+  if (!Number.isInteger(qty) || qty <= 0) {
+    alert("الكمية لازم تكون عدداً صحيحاً أكبر من صفر.");
+    return;
+  }
 
- const before=JSON.stringify(items);
+  if (!Number.isFinite(price) || price < 0) {
+    alert("اكتب سعر شراء صحيحاً.");
+    return;
+  }
 
- if(existing){
-  existing.qty=(Number(existing.qty)||0)+qty;
-  // السعر المعروض دائماً هو آخر سعر شراء، وليس المتوسط
-  existing.avgCost=price;
-  existing.name=name;
-  if(code)existing.code=code;
-  if(selectedPhoto)existing.photo=selectedPhoto;
-  existing.lastInvoice=invoiceNo;
-  existing.updatedAt=new Date().toISOString();
- }else{
-  items.push({
-   id:makeId(),name,code,qty,avgCost:price,sold:0,
-   photo:selectedPhoto,lastInvoice:invoiceNo,
-   createdAt:new Date().toISOString(),
-   updatedAt:new Date().toISOString()
+  let existing = null;
+
+  if (code) {
+    existing = items.find(x => norm(x.code) === norm(code));
+  } else {
+    existing = items.find(
+      x => !String(x.code || "").trim() &&
+           norm(x.name) === norm(name)
+    );
+  }
+
+  const before = JSON.stringify(items);
+  const isExisting = Boolean(existing);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    existing.qty = (Number(existing.qty) || 0) + qty;
+    existing.avgCost = price;
+    existing.name = name;
+
+    if (code) existing.code = code;
+    if (selectedPhoto) existing.photo = selectedPhoto;
+
+    existing.lastInvoice = invoiceNo;
+    existing.updatedAt = now;
+  } else {
+    items.push({
+      id: makeId(),
+      name,
+      code,
+      qty,
+      avgCost: price,
+      sold: 0,
+      photo: selectedPhoto,
+      lastInvoice: invoiceNo,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+
+  if (!saveData()) {
+    items = JSON.parse(before);
+    renderInventory();
+    return;
+  }
+
+  [
+    "invoiceNumber",
+    "productName",
+    "productCode",
+    "buyQty",
+    "buyPrice",
+    "productPhoto"
+  ].forEach(id => {
+    document.getElementById(id).value = "";
   });
- }
 
- if(!saveData()){items=JSON.parse(before);return;}
+  document.getElementById("photoPreview").innerHTML = "";
+  document.getElementById("photoPreview").classList.add("hidden");
+  selectedPhoto = "";
 
- ["invoiceNumber","productName","productCode","buyQty","buyPrice","productPhoto"].forEach(id=>{
-  document.getElementById(id).value="";
- });
- document.getElementById("photoPreview").innerHTML="";
- document.getElementById("photoPreview").classList.add("hidden");
- selectedPhoto="";
- renderInventory();
- showPanel("inventory");
- alert(existing?"تم تحديث المادة والكمية وآخر سعر شراء.":"تمت إضافة المادة للمخزون.");
-}
-
-function renderInventory(){
- const list=document.getElementById("itemsList");
- const search=norm(document.getElementById("search").value);
- const totalQty=items.reduce((s,x)=>s+(Number(x.qty)||0),0);
- const totalSold=items.reduce((s,x)=>s+(Number(x.sold)||0),0);
- const capital=items.reduce((s,x)=>s+(Number(x.qty)||0)*(Number(x.avgCost)||0),0);
-
- document.getElementById("totalItems").textContent=nf(items.length);
- document.getElementById("totalQty").textContent=nf(totalQty);
- document.getElementById("totalCapital").textContent=nf(capital);
- document.getElementById("totalSold").textContent=nf(totalSold);
-
- const filtered=items.filter(x=>norm(x.name).includes(search)||norm(x.code).includes(search));
- if(!filtered.length){
-  list.innerHTML='<div class="empty">'+(items.length?"ما في نتائج مطابقة للبحث.":"المخزون فارغ. اضغط «إضافة فاتورة» لإضافة مادة.")+'</div>';
-  return;
- }
-
- list.innerHTML=filtered.map(x=>{
-  const qty=Number(x.qty)||0;
-  const price=Number(x.avgCost)||0;
-  const sold=Number(x.sold)||0;
-  const capital=qty*price;
-  const photo=x.photo
-   ?'<img alt="صورة المادة" src="'+x.photo+'">'
-   :'<div style="width:75px;height:75px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border:1px solid #ddd;border-radius:9px;color:#64748b;flex-shrink:0;font-size:12px">بدون صورة</div>';
-
-  return '<article class="card"><div class="product">'+photo+
-   '<div class="product-info"><h3>'+esc(x.name)+'</h3>'+
-   '<div class="meta">الرمز: '+(x.code?esc(x.code):"غير محدد")+'</div>'+
-   '<div class="meta">الكمية المتوفرة: <b>'+nf(qty)+'</b></div>'+
-   '<div class="meta">آخر سعر شراء: <span class="price">'+nf(price)+'</span></div>'+
-   '<div class="meta">رأس المال الحالي: <b>'+nf(capital)+'</b></div>'+
-   '<div class="meta">الكمية المباعة: '+nf(sold)+'</div>'+
-   (x.lastInvoice?'<div class="meta">آخر فاتورة: '+esc(x.lastInvoice)+'</div>':"")+
-   '</div></div><div class="actions">'+
-   '<button class="success small-btn" onclick="sellItem(\''+x.id+'\')">بيع / تنزيل</button>'+
-   '<button class="secondary small-btn" onclick="editItem(\''+x.id+'\')">تعديل</button>'+
-   '<button class="danger small-btn" onclick="deleteItem(\''+x.id+'\')">حذف</button>'+
-   '</div></article>';
- }).join("");
-}
-
-function findItem(id){return items.find(x=>x.id===id);}
-
-function sellItem(id){
- const item=findItem(id);
- if(!item)return;
- const raw=prompt("كم قطعة بدك تبيع أو تنزّل؟\nالمادة: "+item.name+"\nالمتوفر: "+item.qty);
- if(raw===null)return;
- const qty=Number(raw);
- if(!Number.isInteger(qty)||qty<=0){alert("أدخل كمية صحيحة أكبر من صفر.");return;}
- if(qty>Number(item.qty)){alert("الكمية أكبر من الموجود بالمخزون.");return;}
- askConfirm("تأكيد البيع أو التنزيل",
-  "رح يتم تنزيل "+qty+" قطعة من «"+item.name+"». هل أنت متأكد؟",
-  ()=>{
-   const before=JSON.stringify(items);
-   item.qty=Number(item.qty)-qty;
-   item.sold=(Number(item.sold)||0)+qty;
-   item.updatedAt=new Date().toISOString();
-   if(!saveData()){items=JSON.parse(before);return;}
-   renderInventory();
-   alert("تم تنزيل الكمية.");
-  });
-}
-
-function deleteItem(id){
- const item=findItem(id);
- if(!item)return;
- askConfirm("تأكيد الحذف","متأكد بدك تحذف المادة «"+item.name+"» نهائياً؟",()=>{
-  const before=items;
-  items=items.filter(x=>x.id!==id);
-  if(!saveData()){items=before;return;}
   renderInventory();
- });
+  showPanel("inventory");
+
+  alert(isExisting
+    ? "تم تحديث المادة والكمية وآخر سعر شراء."
+    : "تمت إضافة المادة للمخزون.");
 }
 
-function editItem(id){
- const item=findItem(id);
- if(!item)return;
- const name=prompt("اسم المادة:",item.name);
- if(name===null)return;
- if(!name.trim()){alert("الاسم ما بيصير يكون فارغ.");return;}
- const code=prompt("رمز المادة:",item.code||"");
- if(code===null)return;
- const priceRaw=prompt("آخر سعر شراء:",String(item.avgCost||0));
- if(priceRaw===null)return;
- const price=Number(priceRaw);
- if(!Number.isFinite(price)||price<0){alert("السعر غير صحيح.");return;}
- if(code.trim()&&items.some(x=>x.id!==id&&norm(x.code)===norm(code))){
-  alert("الرمز مستخدم لمادة ثانية.");return;
- }
- const before=JSON.stringify(items);
- item.name=name.trim();
- item.code=code.trim();
- item.avgCost=price;
- item.updatedAt=new Date().toISOString();
- if(!saveData()){items=JSON.parse(before);return;}
- renderInventory();
+function renderInventory() {
+  const list = document.getElementById("itemsList");
+  const search = norm(document.getElementById("search").value);
+
+  const totalQty = items.reduce((s, x) => s + (Number(x.qty) || 0), 0);
+  const totalSold = items.reduce((s, x) => s + (Number(x.sold) || 0), 0);
+  const capital = items.reduce(
+    (s, x) => s + (Number(x.qty) || 0) * (Number(x.avgCost) || 0),
+    0
+  );
+
+  document.getElementById("totalItems").textContent = nf(items.length);
+  document.getElementById("totalQty").textContent = nf(totalQty);
+  document.getElementById("totalCapital").textContent = nf(capital);
+  document.getElementById("totalSold").textContent = nf(totalSold);
+
+  const filtered = items.filter(
+    x => norm(x.name).includes(search) || norm(x.code).includes(search)
+  );
+
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty">' +
+      (items.length
+        ? "ما في نتائج مطابقة للبحث."
+        : 'المخزون فارغ. اضغط «إضافة فاتورة» لإضافة مادة.') +
+      "</div>";
+    return;
+  }
+
+  list.innerHTML = filtered.map(x => {
+    const qty = Number(x.qty) || 0;
+    const price = Number(x.avgCost) || 0;
+    const sold = Number(x.sold) || 0;
+    const capital = qty * price;
+
+    const photo = x.photo
+      ? '<img alt="صورة المادة" src="' + esc(x.photo) + '">'
+      : '<div style="width:75px;height:75px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border:1px solid #ddd;border-radius:9px;color:#64748b;flex-shrink:0;font-size:12px">بدون صورة</div>';
+
+    return '<article class="card"><div class="product">' + photo +
+      '<div class="product-info"><h3>' + esc(x.name) + '</h3>' +
+      '<div class="meta">الرمز: ' + (x.code ? esc(x.code) : "غير محدد") + '</div>' +
+      '<div class="meta">الكمية المتوفرة: <b>' + nf(qty) + '</b></div>' +
+      '<div class="meta">آخر سعر شراء: <span class="price">' + nf(price) + '</span></div>' +
+      '<div class="meta">رأس المال الحالي: <b>' + nf(capital) + '</b></div>' +
+      '<div class="meta">الكمية المباعة: ' + nf(sold) + '</div>' +
+      (x.lastInvoice ? '<div class="meta">آخر فاتورة: ' + esc(x.lastInvoice) + '</div>' : "") +
+      '</div></div><div class="actions">' +
+      '<button class="success small-btn" onclick="sellItem(\'' + esc(x.id) + '\')">بيع / تنزيل</button>' +
+      '<button class="secondary small-btn" onclick="editItem(\'' + esc(x.id) + '\')">تعديل</button>' +
+      '<button class="danger small-btn" onclick="deleteItem(\'' + esc(x.id) + '\')">حذف</button>' +
+      '</div></article>';
+  }).join("");
 }
 
-function askConfirm(title,message,action){
- const bg=document.getElementById("modalBg");
- document.getElementById("modalTitle").textContent=title;
- document.getElementById("modalText").textContent=message;
- confirmAction=action;
- bg.style.display="flex";
- bg.style.visibility="visible";
- bg.style.opacity="1";
+function findItem(id) {
+  return items.find(x => x.id === id);
 }
 
-function closeModal(){
- document.getElementById("modalBg").style.display="none";
- confirmAction=null;
+function sellItem(id) {
+  const item = findItem(id);
+  if (!item) return;
+
+  const raw = prompt(
+    "كم قطعة بدك تبيع أو تنزّل؟\nالمادة: " +
+    item.name + "\nالمتوفر: " + item.qty
+  );
+
+  if (raw === null) return;
+
+  const qty = Number(raw);
+
+  if (!Number.isInteger(qty) || qty <= 0) {
+    alert("أدخل كمية صحيحة أكبر من صفر.");
+    return;
+  }
+
+  if (qty > Number(item.qty)) {
+    alert("الكمية أكبر من الموجود بالمخزون.");
+    return;
+  }
+
+  askConfirm(
+    "تأكيد البيع أو التنزيل",
+    "رح يتم تنزيل " + qty + " قطعة من «" + item.name + "». هل أنت متأكد؟",
+    () => {
+      const before = JSON.stringify(items);
+
+      item.qty = Number(item.qty) - qty;
+      item.sold = (Number(item.sold) || 0) + qty;
+      item.updatedAt = new Date().toISOString();
+
+      if (!saveData()) {
+        items = JSON.parse(before);
+        renderInventory();
+        return;
+      }
+
+      renderInventory();
+      alert("تم تنزيل الكمية.");
+    }
+  );
 }
 
-document.getElementById("modalYes").onclick=function(){
- const action=confirmAction;
- closeModal();
- if(typeof action==="function")action();
+function deleteItem(id) {
+  const item = findItem(id);
+  if (!item) return;
+
+  askConfirm(
+    "تأكيد الحذف",
+    "متأكد بدك تحذف المادة «" + item.name + "» نهائياً؟",
+    () => {
+      const before = items;
+      items = items.filter(x => x.id !== id);
+
+      if (!saveData()) {
+        items = before;
+        renderInventory();
+        return;
+      }
+
+      renderInventory();
+    }
+  );
+}
+
+function editItem(id) {
+  const item = findItem(id);
+  if (!item) return;
+
+  const name = prompt("اسم المادة:", item.name);
+  if (name === null) return;
+
+  if (!name.trim()) {
+    alert("الاسم ما بيصير يكون فارغ.");
+    return;
+  }
+
+  const code = prompt("رمز المادة:", item.code || "");
+  if (code === null) return;
+
+  const priceRaw = prompt("آخر سعر شراء:", String(item.avgCost || 0));
+  if (priceRaw === null) return;
+
+  const price = Number(priceRaw);
+
+  if (!Number.isFinite(price) || price < 0) {
+    alert("السعر غير صحيح.");
+    return;
+  }
+
+  if (code.trim() && items.some(
+    x => x.id !== id && norm(x.code) === norm(code)
+  )) {
+    alert("الرمز مستخدم لمادة ثانية.");
+    return;
+  }
+
+  const before = JSON.stringify(items);
+
+  item.name = name.trim();
+  item.code = code.trim();
+  item.avgCost = price;
+  item.updatedAt = new Date().toISOString();
+
+  if (!saveData()) {
+    items = JSON.parse(before);
+    renderInventory();
+    return;
+  }
+
+  renderInventory();
+  alert("تم تعديل المادة وحفظ التغييرات.");
+}
+
+function askConfirm(title, message, action) {
+  const bg = document.getElementById("modalBg");
+
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalText").textContent = message;
+
+  confirmAction = action;
+  bg.style.display = "flex";
+  bg.style.visibility = "visible";
+  bg.style.opacity = "1";
+}
+
+function closeModal() {
+  document.getElementById("modalBg").style.display = "none";
+  confirmAction = null;
+}
+
+document.getElementById("modalYes").onclick = function() {
+  const action = confirmAction;
+  closeModal();
+
+  if (typeof action === "function") action();
 };
 
-function clearAll(){
- askConfirm("حذف كامل المخزون",
-  "رح تنحذف كل المواد والصور والبيانات المحفوظة من هذا التطبيق. هل أنت متأكد؟",
-  ()=>{
-   const before=items;
-   items=[];
-   if(!saveData()){items=before;return;}
-   renderInventory();
-   alert("تم حذف المخزون.");
-  });
+function clearAll() {
+  askConfirm(
+    "حذف كامل المخزون",
+    "رح تنحذف كل المواد والصور والبيانات المحفوظة من هذا التطبيق. هل أنت متأكد؟",
+    () => {
+      const before = items;
+      items = [];
+
+      if (!saveData()) {
+        items = before;
+        renderInventory();
+        return;
+      }
+
+      renderInventory();
+      alert("تم حذف المخزون.");
+    }
+  );
 }
 
-function exportBackup(){
- const data={app:"inventory_manager",version:2,exportedAt:new Date().toISOString(),items};
- const blob=new Blob([JSON.stringify(data)],{type:"application/json"});
- const url=URL.createObjectURL(blob);
- const a=document.createElement("a");
- a.href=url;
- a.download="نسخة_احتياطية_المخزون.json";
- document.body.appendChild(a);
- a.click();
- a.remove();
- setTimeout(()=>URL.revokeObjectURL(url),2000);
+function exportBackup() {
+  try {
+    const data = {
+      app: "inventory_manager",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      items
+    };
+
+    const blob = new Blob(
+      [JSON.stringify(data)],
+      { type: "application/json" }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = "نسخة_احتياطية_المخزون.json";
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  } catch (e) {
+    alert("تعذر إنشاء النسخة الاحتياطية.");
+  }
 }
 
-function importBackup(){
- const input=document.getElementById("backupFile");
- const file=input.files&&input.files[0];
- if(!file){alert("اختار ملف النسخة الاحتياطية.");return;}
- const reader=new FileReader();
- reader.onerror=()=>alert("تعذرت قراءة الملف.");
- reader.onload=()=>{
-  try{
-   const parsed=JSON.parse(reader.result);
-   const imported=Array.isArray(parsed)?parsed:parsed.items;
-   if(!Array.isArray(imported)||!imported.every(x=>x&&typeof x.name==="string"))throw new Error();
-   askConfirm("استعادة النسخة الاحتياطية",
-    "رح تستبدل النسخة الجديدة بيانات المخزون الحالية. متابعة؟",
-    ()=>{
-     const before=items;
-     items=imported.map(x=>({
-      id:x.id||makeId(),name:String(x.name||""),code:String(x.code||""),
-      qty:Math.max(0,Number(x.qty)||0),
-      avgCost:Math.max(0,Number(x.avgCost)||0),
-      sold:Math.max(0,Number(x.sold)||0),
-      photo:typeof x.photo==="string"?x.photo:"",
-      lastInvoice:String(x.lastInvoice||""),
-      createdAt:x.createdAt||new Date().toISOString(),
-      updatedAt:x.updatedAt||new Date().toISOString()
-     }));
-     if(!saveData()){items=before;return;}
-     renderInventory();
-     input.value="";
-     showPanel("inventory");
-     alert("تمت استعادة النسخة الاحتياطية.");
-    });
-  }catch(e){alert("ملف النسخة الاحتياطية غير صالح.");}
- };
- reader.readAsText(file);
+function importBackup() {
+  const input = document.getElementById("backupFile");
+  const file = input.files && input.files[0];
+
+  if (!file) {
+    alert("اختار ملف النسخة الاحتياطية.");
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onerror = () => alert("تعذرت قراءة الملف.");
+
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const imported = Array.isArray(parsed) ? parsed : parsed.items;
+
+      if (
+        !Array.isArray(imported) ||
+        !imported.every(x => x && typeof x.name === "string")
+      ) {
+        throw new Error("Invalid backup");
+      }
+
+      const normalized = imported.map(normalizeItem);
+
+      askConfirm(
+        "استعادة النسخة الاحتياطية",
+        "رح تستبدل النسخة الجديدة بيانات المخزون الحالية. متابعة؟",
+        () => {
+          const before = items;
+          items = normalized;
+
+          if (!saveData()) {
+            items = before;
+            renderInventory();
+            return;
+          }
+
+          renderInventory();
+          input.value = "";
+          showPanel("inventory");
+          alert("تمت استعادة النسخة الاحتياطية.");
+        }
+      );
+    } catch (e) {
+      alert("ملف النسخة الاحتياطية غير صالح.");
+    }
+  };
+
+  reader.readAsText(file);
 }
 
 loadData();
 </script>
 </body>
-  </html>
+</html>
